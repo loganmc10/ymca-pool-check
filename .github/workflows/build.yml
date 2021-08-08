@@ -1,0 +1,28 @@
+name: Check project
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  check-script:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Set up Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: '3.9'
+
+      - name: Update and install packages
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --upgrade requests flake8 mypy bandit types-requests beautifulsoup4
+
+      - name: Check python scripts
+        run: |
+          flake8 --extend-ignore=E501 pool-check.py
+          mypy --strict pool-check.py
+          bandit pool-check.py
+ 
