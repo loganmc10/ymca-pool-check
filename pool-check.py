@@ -107,18 +107,16 @@ if __name__ == '__main__':
         retries = Retry(total=5, backoff_factor=0.5, status_forcelist=Retry.RETRY_AFTER_STATUS_CODES)
         s_loki.mount('https://', HTTPAdapter(max_retries=retries))
         s_loki.auth = (os.environ['LOKI_USER'], os.environ['LOKI_PASS'])
-        while True:
-            loki_output: LokiOutput = {'streams': []}
-            item_output: ItemOutput = {'stream': {}, 'values': []}
-            item_output['stream']['job'] = 'ymca_pools'
-            metrics = get_metrics()
-            for ymca in metrics:
-                item_output['values'].append([str(time.time_ns()), json.dumps(ymca)])
-            loki_output['streams'].append(item_output)
-            try:
-                r = s_loki.post('https://logs-prod-us-central2.grafana.net/loki/api/v1/push', json=loki_output, timeout=20)
-                if r.status_code != 200 and r.status_code != 204:
-                    print(str(datetime.now()) + " Loki error: " + r.text)
-            except (requests.exceptions.RequestException, OSError) as e:
-                print(str(datetime.now()) + " Error contacting Loki: %s" % e)
-            time.sleep(300)
+        loki_output: LokiOutput = {'streams': []}
+        item_output: ItemOutput = {'stream': {}, 'values': []}
+        item_output['stream']['job'] = 'ymca_pools'
+        metrics = get_metrics()
+        for ymca in metrics:
+            item_output['values'].append([str(time.time_ns()), json.dumps(ymca)])
+        loki_output['streams'].append(item_output)
+        try:
+            r = s_loki.post('https://logs-prod-us-central2.grafana.net/loki/api/v1/push', json=loki_output, timeout=20)
+            if r.status_code != 200 and r.status_code != 204:
+                print(str(datetime.now()) + " Loki error: " + r.text)
+        except (requests.exceptions.RequestException, OSError) as e:
+            print(str(datetime.now()) + " Error contacting Loki: %s" % e)
