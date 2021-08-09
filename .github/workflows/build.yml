@@ -18,7 +18,7 @@ jobs:
       - name: Update and install packages
         run: |
           python -m pip install --upgrade pip
-          python -m pip install --upgrade requests flake8 mypy bandit requests dateutil types-requests types-python-dateutil beautifulsoup4
+          python -m pip install --upgrade requests flake8 mypy bandit dateutil types-requests types-python-dateutil beautifulsoup4
 
       - name: Check python scripts
         run: |
