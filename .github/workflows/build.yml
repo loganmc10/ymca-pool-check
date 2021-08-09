@@ -25,4 +25,3 @@ jobs:
           flake8 --extend-ignore=E501 pool-check.py
           mypy --strict pool-check.py
           bandit pool-check.py
- 
