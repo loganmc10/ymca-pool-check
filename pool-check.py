@@ -1,5 +1,6 @@
 import requests
 import dateutil.parser
+import dateutil.utils
 import time
 import os
 import json
@@ -72,7 +73,7 @@ def get_metrics() -> List[Dict[str, Union[str, bool, int]]]:
                                 sun = ["12:00am", "12:00am"]
                             else:
                                 sun = sat
-                            weekday = datetime.today().weekday()
+                            weekday = dateutil.utils.today(tzinfo=gettz("America/Edmonton")).weekday()
                             if weekday < 5:
                                 open = dateutil.parser.parse(mf[0] + " MST", tzinfos=tzinfos)
                                 close = dateutil.parser.parse(mf[1] + " MST", tzinfos=tzinfos)
