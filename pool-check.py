@@ -94,8 +94,6 @@ def get_metrics() -> List[Dict[str, Union[str, bool, int]]]:
                     ymca['capacity'] = 1
                 elif ymca['status'] == 'red':
                     ymca['capacity'] = 2
-                ymca.pop('status')
-                ymca.pop('open')
         except (requests.exceptions.RequestException, OSError) as e:
             print("HTTP error in GET: %s" % e)
             return []
