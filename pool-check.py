@@ -1,48 +1,61 @@
 import requests
-import datetime
 import dateutil.parser
 import time
+import os
+import json
+from datetime import datetime
+from typing import Dict, Union, List, TypedDict
 from dateutil.tz import gettz
 from bs4 import BeautifulSoup  # type: ignore
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry  # type: ignore
 
 
-def main() -> None:
+class ItemOutput(TypedDict):
+    stream: Dict[str, str]
+    values: List[List[str]]
+
+
+class LokiOutput(TypedDict):
+    streams: List[ItemOutput]
+
+
+def get_metrics() -> List[Dict[str, Union[str, bool, int]]]:
+    metrics = []
     with requests.Session() as s:
-        # This tells Python to retry HTTP requests up to 5 times if they fail
         retries = Retry(total=5, backoff_factor=0.5, status_forcelist=Retry.RETRY_AFTER_STATUS_CODES)
         s.mount('https://', HTTPAdapter(max_retries=retries))
         try:
             capacity = s.get('https://www.ymcacalgary.org/capacity/')
             if capacity.status_code != 200:
                 print("HTTP error in GET capacity: " + capacity.text)
-                return
+                return []
             soup = BeautifulSoup(capacity.content, "html.parser")
-            data = {}
             table = soup.find_all('table')[0]
             table_body = table.find('tbody')
             rows = table_body.find_all('tr')
             for row in rows:
                 cols = row.find_all('td')
                 if cols:
+                    ymca: Dict[str, Union[str, bool, int]] = {}
+                    metrics.append(ymca)
                     divs = cols[1].find_all('div')
+                    ymca["name"] = cols[0].text
                     if len(divs) > 0:
-                        data[cols[0].text] = divs[0]['id']
+                        ymca['status'] = divs[0]['id']
                     else:
-                        data[cols[0].text] = cols[1]['id']
+                        ymca['status'] = cols[1]['id']
             script = soup.find_all('script')[3]
             script = str(script)
-            for key, value in data.items():
-                pos = script.find("#" + value)
+            for ymca in metrics:
+                pos = script.find("#" + str(ymca['status']))
                 pos = script.find("addClass(", pos)
-                data[key] = {}
-                data[key]['status'] = script[pos:].split('"')[1]
+                ymca['status'] = script[pos:].split('"')[1]
 
             hours = s.get('https://www.ymcacalgary.org/faqs/')
             if hours.status_code != 200:
                 print("HTTP error in GET hours: " + hours.text)
-                return
+                return []
             soup = BeautifulSoup(hours.content, "html.parser")
             tzinfos = {"MST": gettz("America/Edmonton")}
             table = soup.find_all('table')[1]
@@ -50,8 +63,8 @@ def main() -> None:
             for row in rows:
                 cols = row.find_all('td')
                 if cols:
-                    for key, value in data.items():
-                        if key[:8] in cols[0].text:
+                    for ymca in metrics:
+                        if str(ymca['name'])[:8] in cols[0].text:
                             mf = cols[1].text.split(' - ')
                             sat = cols[2].text.split(' - ')
                             if "Closed Sunday" in sat[1]:
@@ -59,7 +72,7 @@ def main() -> None:
                                 sun = ["12:00am", "12:00am"]
                             else:
                                 sun = sat
-                            weekday = datetime.datetime.today().weekday()
+                            weekday = datetime.today().weekday()
                             if weekday < 5:
                                 open = dateutil.parser.parse(mf[0] + " MST", tzinfos=tzinfos)
                                 close = dateutil.parser.parse(mf[1] + " MST", tzinfos=tzinfos)
@@ -70,22 +83,42 @@ def main() -> None:
                                 open = dateutil.parser.parse(sun[0] + " MST", tzinfos=tzinfos)
                                 close = dateutil.parser.parse(sun[1] + " MST", tzinfos=tzinfos)
                             if time.time() < close.timestamp() and time.time() > open.timestamp():
-                                data[key]["open"] = True
+                                ymca["open"] = True
                             else:
-                                data[key]["status"] = "red"
-                                data[key]["open"] = False
-            for key, value in data.items():
-                if data[key]['status'] == 'green':
-                    data[key]['value'] = 0
-                elif data[key]['status'] == 'yellow':
-                    data[key]['value'] = 1
-                elif data[key]['status'] == 'red':
-                    data[key]['value'] = 2
-            print(data)
+                                ymca["status"] = "red"
+                                ymca["open"] = False
+            for ymca in metrics:
+                if ymca['status'] == 'green':
+                    ymca['capacity'] = 0
+                elif ymca['status'] == 'yellow':
+                    ymca['capacity'] = 1
+                elif ymca['status'] == 'red':
+                    ymca['capacity'] = 2
+                ymca.pop('status')
+                ymca.pop('open')
         except (requests.exceptions.RequestException, OSError) as e:
             print("HTTP error in GET: %s" % e)
-            return
+            return []
+    return metrics
 
 
 if __name__ == '__main__':
-    main()
+    with requests.Session() as s_loki:
+        retries = Retry(total=5, backoff_factor=0.5, status_forcelist=Retry.RETRY_AFTER_STATUS_CODES)
+        s_loki.mount('https://', HTTPAdapter(max_retries=retries))
+        s_loki.auth = (os.environ['LOKI_USER'], os.environ['LOKI_PASS'])
+        while True:
+            loki_output: LokiOutput = {'streams': []}
+            item_output: ItemOutput = {'stream': {}, 'values': []}
+            item_output['stream']['job'] = 'ymca_pools'
+            metrics = get_metrics()
+            for ymca in metrics:
+                item_output['values'].append([str(time.time_ns()), json.dumps(ymca)])
+            loki_output['streams'].append(item_output)
+            try:
+                r = s_loki.post('https://logs-prod-us-central2.grafana.net/loki/api/v1/push', json=loki_output, timeout=20)
+                if r.status_code != 200 and r.status_code != 204:
+                    print(str(datetime.now()) + " Loki error: " + r.text)
+            except (requests.exceptions.RequestException, OSError) as e:
+                print(str(datetime.now()) + " Error contacting Loki: %s" % e)
+            time.sleep(300)
