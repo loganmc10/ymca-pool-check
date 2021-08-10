@@ -88,6 +88,9 @@ def get_metrics() -> List[Dict[str, Union[str, bool, int]]]:
                             else:
                                 ymca["status"] = "red"
                                 ymca["open"] = False
+                            # print(ymca["name"], time.time(), open.timestamp(), close.timestamp())
+                            ymca["open_time"] = open.isoformat()
+                            ymca["close_time"] = close.isoformat()
             for ymca in metrics:
                 if ymca['status'] == 'green':
                     ymca['capacity'] = 0
@@ -105,7 +108,7 @@ if __name__ == '__main__':
     with requests.Session() as s_loki:
         retries = Retry(total=5, backoff_factor=0.5, status_forcelist=Retry.RETRY_AFTER_STATUS_CODES)
         s_loki.mount('https://', HTTPAdapter(max_retries=retries))
-        s_loki.auth = (os.environ['LOKI_USER'], os.environ['LOKI_PASS'])
+        s_loki.auth = (os.environ.get('LOKI_USER', ''), os.environ.get('LOKI_PASS', ''))
         loki_output: LokiOutput = {'streams': []}
         item_output: ItemOutput = {'stream': {}, 'values': []}
         item_output['stream']['job'] = 'ymca_pools'
@@ -118,5 +121,7 @@ if __name__ == '__main__':
                 r = s_loki.post('https://logs-prod-us-central2.grafana.net/loki/api/v1/push', json=loki_output, timeout=20)
                 if r.status_code != 200 and r.status_code != 204:
                     print(str(datetime.now()) + " Loki error: " + r.text)
+                    for ymca in metrics:
+                        print(ymca)
             except (requests.exceptions.RequestException, OSError) as e:
                 print(str(datetime.now()) + " Error contacting Loki: %s" % e)
