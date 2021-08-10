@@ -58,7 +58,6 @@ def get_metrics() -> List[Dict[str, Union[str, bool, int]]]:
                 print("HTTP error in GET hours: " + hours.text)
                 return []
             soup = BeautifulSoup(hours.content, "html.parser")
-            tzinfos = {"MST": gettz("America/Edmonton")}
             table = soup.find_all('table')[1]
             rows = table.find_all('tr')
             for row in rows:
@@ -73,22 +72,40 @@ def get_metrics() -> List[Dict[str, Union[str, bool, int]]]:
                                 sun = ["12:00am", "12:00am"]
                             else:
                                 sun = sat
-                            weekday = dateutil.utils.today(tzinfo=gettz("America/Edmonton")).weekday()
+                            today = dateutil.utils.today(tzinfo=gettz("America/Edmonton"))
+                            weekday = today.weekday()
                             if weekday < 5:
-                                open = dateutil.parser.parse(mf[0] + " MST", tzinfos=tzinfos)
-                                close = dateutil.parser.parse(mf[1] + " MST", tzinfos=tzinfos)
+                                open_hour = mf[0].split(':')[0]
+                                open_minute = mf[0].split(':')[1]
+                                close_hour = mf[1].split(':')[0]
+                                close_minute = mf[1].split(':')[1]
                             elif weekday == 5:
-                                open = dateutil.parser.parse(sat[0] + " MST", tzinfos=tzinfos)
-                                close = dateutil.parser.parse(sat[1] + " MST", tzinfos=tzinfos)
+                                open_hour = sat[0].split(':')[0]
+                                open_minute = sat[0].split(':')[1]
+                                close_hour = sat[1].split(':')[0]
+                                close_minute = sat[1].split(':')[1]
                             else:
-                                open = dateutil.parser.parse(sun[0] + " MST", tzinfos=tzinfos)
-                                close = dateutil.parser.parse(sun[1] + " MST", tzinfos=tzinfos)
+                                open_hour = sun[0].split(':')[0]
+                                open_minute = sun[0].split(':')[1]
+                                close_hour = sun[1].split(':')[0]
+                                close_minute = sun[1].split(':')[1]
+                            open_hour = int(open_hour)
+                            close_hour = int(close_hour)
+                            if 'pm' in open_minute:
+                                open_hour += 12
+                            if 'pm' in close_minute:
+                                close_hour += 12
+                            open_minute = open_minute[:-2]
+                            close_minute = close_minute[:-2]
+                            open_minute = int(open_minute)
+                            close_minute = int(close_minute)
+                            open = today.replace(hour=open_hour, minute=open_minute)
+                            close = today.replace(hour=close_hour, minute=close_minute)
                             if time.time() < close.timestamp() and time.time() > open.timestamp():
                                 ymca["open"] = True
                             else:
                                 ymca["status"] = "red"
                                 ymca["open"] = False
-                            # print(ymca["name"], time.time(), open.timestamp(), close.timestamp())
                             ymca["open_time"] = open.isoformat()
                             ymca["close_time"] = close.isoformat()
             for ymca in metrics:
