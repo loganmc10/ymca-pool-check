@@ -22,7 +22,7 @@ jobs:
 
       - name: Check python scripts
         run: |
-          black pool-check.py
+          black --check pool-check.py
           flake8 --extend-ignore=E501 pool-check.py
           mypy --strict pool-check.py
           bandit pool-check.py
